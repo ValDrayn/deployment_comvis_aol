@@ -7,9 +7,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from skimage.feature import hog, local_binary_pattern
 
-# =========================
-# 1. PAGE CONFIG & STYLING
-# =========================
 st.set_page_config(
     page_title="Dog Breed Detector",
     page_icon="🐶",
@@ -17,7 +14,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS untuk mempercantik tampilan metric dan header
 st.markdown("""
     <style>
     .main {
@@ -33,20 +29,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# =========================
-# 2. GLOBAL CONSTANTS (TIDAK DIUBAH)
-# =========================
-MODEL_PATH = "dog_model_hog_lbp.pkl"
+MODEL_PATH = "dog_model_hog_lbp_augmented.pkl"
 IMG_SIZE = (128, 128)
 LBP_RADIUS = 1
 LBP_POINTS = 8 * LBP_RADIUS
 
-# =========================
-# 3. CACHED FUNCTIONS (OPTIMISASI)
-# =========================
 @st.cache_resource
 def load_model():
-    """Load model sekali saja dan simpan di cache memory."""
     try:
         data = joblib.load(MODEL_PATH)
         return data["svm"], data["scaler"], data["classes"]
@@ -54,17 +43,12 @@ def load_model():
         st.error(f"❌ File '{MODEL_PATH}' tidak ditemukan. Pastikan file berada di direktori yang sama.")
         return None, None, None
 
-# Load Model
 svm, scaler, classes = load_model()
 
-# =========================
-# 4. FEATURE EXTRACTION (LOGIKA TETAP)
-# =========================
 def extract_feature_with_vis(img_bgr):
     img = cv2.resize(img_bgr, IMG_SIZE)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # HOG
     hog_feat = hog(
         gray,
         orientations=9,
@@ -74,7 +58,6 @@ def extract_feature_with_vis(img_bgr):
         feature_vector=True
     )
 
-    # LBP
     lbp = local_binary_pattern(gray, LBP_POINTS, LBP_RADIUS, method="uniform")
     lbp_hist, _ = np.histogram(
         lbp.ravel(),
@@ -86,32 +69,24 @@ def extract_feature_with_vis(img_bgr):
 
     feature = np.hstack([hog_feat, lbp_hist])
 
-    # Visualization LBP
     lbp_vis = cv2.normalize(lbp, None, 0, 255, cv2.NORM_MINMAX)
     lbp_vis = cv2.cvtColor(lbp_vis.astype(np.uint8), cv2.COLOR_GRAY2RGB)
 
     return feature, lbp_vis
 
-# =========================
-# 5. PROCESSING LOGIC
-# =========================
 def process_prediction(feat):
-    """Fungsi prediksi terpisah agar kode UI lebih bersih"""
     t0 = time.time()
 
-    # Decision Function
     scores = svm.decision_function(feat)[0]
     scores = scores.astype(np.float64)
     
-    # Softmax logic (Sesuai kode asli)
     scores -= np.max(scores)
     exp_scores = np.exp(scores)
     probs = exp_scores / np.sum(exp_scores)
 
     infer_ms = (time.time() - t0) * 1000
-    best_margin = np.max(scores) # Note: scores sudah dikurangi max, jadi ini akan 0. Tapi kita ikut logika asli
+    best_margin = np.max(scores) 
 
-    # Return dictionary hasil
     results = {
         classes[i]: float(probs[i])
         for i in range(len(classes))
@@ -127,11 +102,6 @@ def run_benchmark_logic(feat, n_runs):
         times.append((time.time() - t0) * 1000)
     return np.mean(times), np.std(times), times
 
-# =========================
-# 6. UI LAYOUT
-# =========================
-
-# --- Sidebar ---
 with st.sidebar:
     st.image(
         "https://cdn-icons-png.flaticon.com/512/616/616408.png",
@@ -162,17 +132,14 @@ with st.sidebar:
 
 
 
-# --- Main Content ---
 st.title("🐶 Dog Breed Classifier")
 st.markdown("Analisis ras anjing menggunakan *Classical Computer Vision* (HOG + LBP) dan SVM.")
 
 if svm is None:
-    st.stop() # Hentikan aplikasi jika model gagal load
+    st.stop()
 
-# Tabs
 tab_detect, tab_bench = st.tabs(["🖼️ Single Detection", "⚡ Performance Benchmark"])
 
-# === TAB 1: DETEKSI ===
 with tab_detect:
     col_input, col_result = st.columns([1, 1.5], gap="large")
 
@@ -184,14 +151,12 @@ with tab_detect:
         vis_image = None
         
         if uploaded_file:
-            # Load Image
             file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
             img_bgr = cv2.imdecode(file_bytes, 1)
             img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
             
             st.image(img_rgb, caption="Input Image", use_container_width=True, channels="RGB")
             
-            # Preprocess (Ekstraksi Fitur)
             with st.spinner("Extracting HOG & LBP features..."):
                 raw_feat, vis_image = extract_feature_with_vis(img_bgr)
                 feat_vector = scaler.transform(raw_feat.reshape(1, -1))
@@ -200,40 +165,32 @@ with tab_detect:
         st.subheader("2. Analysis Results")
         
         if feat_vector is not None:
-            # Tombol Prediksi
             if st.button("🔍 Identify Breed", type="primary", use_container_width=True):
                 
                 results, margin, infer_ms = process_prediction(feat_vector)
                 
-                # Cari kelas dengan probabilitas tertinggi
                 top_class = max(results, key=results.get)
                 top_prob = results[top_class]
 
-                # Tampilkan Hasil Utama (Highlight)
                 st.success(f"**Prediction:** {top_class}")
                 
-                # Metrics Row
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Confidence", f"{top_prob*100:.1f}%")
                 m2.metric("Inference Time", f"{infer_ms:.2f} ms")
                 m3.metric("Decision Margin", f"{margin:.2f}")
 
-                # Visualisasi Grafik Batang (Lebih bagus daripada JSON)
                 st.markdown("##### Probability Distribution")
                 df_res = pd.DataFrame(list(results.items()), columns=["Breed", "Probability"])
                 df_res = df_res.sort_values(by="Probability", ascending=True)
                 
-                # Chart
                 st.bar_chart(df_res.set_index("Breed"), color="#2e86c1", height=250)
 
-                # Expander untuk Detail Teknis
                 with st.expander("🔬 View Feature Visualization (LBP)"):
                     st.image(vis_image, caption="Local Binary Pattern (Texture Feature)", use_container_width=True)
                     st.caption("Gambar ini merepresentasikan tekstur yang dilihat oleh model.")
         else:
             st.info("👈 Silakan upload gambar di panel kiri untuk memulai analisis.")
 
-# === TAB 2: BENCHMARK ===
 with tab_bench:
     st.subheader("System Performance Test")
     st.markdown("Menguji stabilitas waktu inferensi model pada mesin ini.")
@@ -252,7 +209,6 @@ with tab_bench:
                 with st.spinner(f"Running prediction {n_runs} times..."):
                     mean_t, std_t, times = run_benchmark_logic(feat_vector, n_runs)
                 
-                # Hasil Statistik
                 st.markdown(f"""
                 | Metric | Value |
                 | :--- | :--- |
@@ -261,7 +217,6 @@ with tab_bench:
                 | **Total Time** | `{sum(times)/1000:.3f} s` |
                 """)
                 
-                # Plotting dengan Matplotlib agar lebih detail dari st.line_chart
                 fig, ax = plt.subplots(figsize=(8, 3))
                 ax.plot(times, marker='o', markersize=4, linestyle='-', color='#2e86c1', alpha=0.7)
                 ax.axhline(mean_t, color='red', linestyle='--', linewidth=1, label=f'Mean: {mean_t:.2f}ms')
@@ -271,7 +226,7 @@ with tab_bench:
                     mean_t + std_t, 
                     color='red', 
                     alpha=0.1, 
-                    label='Std Dev Range (Stability)' # <--- Tambahan Label
+                    label='Std Dev Range (Stability)'
                 )
                 
                 ax.set_title("Inference Stability Check")
