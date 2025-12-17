@@ -174,7 +174,7 @@ with tab_detect:
 
                 st.success(f"**Prediction:** {top_class}")
                 
-                m1, m2, m3 = st.columns(3)
+                m1, m2 = st.columns(2)
                 m1.metric("Confidence", f"{top_prob*100:.1f}%")
                 m2.metric("Inference Time", f"{infer_ms:.2f} ms")
 
