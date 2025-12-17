@@ -177,7 +177,6 @@ with tab_detect:
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Confidence", f"{top_prob*100:.1f}%")
                 m2.metric("Inference Time", f"{infer_ms:.2f} ms")
-                m3.metric("Decision Margin", f"{margin:.2f}")
 
                 st.markdown("##### Probability Distribution")
                 df_res = pd.DataFrame(list(results.items()), columns=["Breed", "Probability"])
